@@ -3,6 +3,7 @@ import { Channel } from '../../types/microscopy';
 import { Eye, EyeOff, Radio, Sliders, Palette, Zap } from 'lucide-react';
 import { Histogram } from './Histogram';
 import { SCIENTIFIC_PRESETS } from '../../services/lutEngine';
+import { ZEISS_DYES } from '../../services/zeissDyes';
 
 interface ChannelControlsProps {
   channels: Channel[];
@@ -125,10 +126,45 @@ export const ChannelControls: React.FC<ChannelControlsProps> = ({
                   onMaxChange={maxVal => updateChannel(ch.id, { maxDisplay: maxVal })}
                 />
 
+                {/* Authentic ZEISS Fluorophore Selector (from Dyes.xml) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', width: '68px' }}>Dye (ZEN):</span>
+                  <select
+                    value={ch.fluorophore}
+                    onChange={e => {
+                      const selected = ZEISS_DYES.find(d => d.name === e.target.value);
+                      if (selected) {
+                        updateChannel(ch.id, {
+                          fluorophore: selected.name,
+                          wavelengthEx: selected.excitationNm,
+                          wavelengthEm: selected.emissionNm,
+                          color: selected.defaultHex
+                        });
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.74rem',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      outline: 'none'
+                    }}
+                  >
+                    {ZEISS_DYES.map(d => (
+                      <option key={d.name} value={d.name} style={{ background: '#1e1e1e' }}>
+                        {d.name} ({d.excitationNm}/{d.emissionNm} nm)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* LUT Preset Selector */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Palette size={14} color="var(--text-muted)" />
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Color LUT:</span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', width: '68px' }}>Color LUT:</span>
                   <select
                     value={ch.color}
                     onChange={e => updateChannel(ch.id, { color: e.target.value })}
@@ -144,7 +180,7 @@ export const ChannelControls: React.FC<ChannelControlsProps> = ({
                     }}
                   >
                     {SCIENTIFIC_PRESETS.map(preset => (
-                      <option key={preset.hex} value={preset.hex} style={{ background: '#0b0f17' }}>
+                      <option key={preset.hex} value={preset.hex} style={{ background: '#1e1e1e' }}>
                         {preset.name}
                       </option>
                     ))}

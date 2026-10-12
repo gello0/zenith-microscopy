@@ -144,13 +144,42 @@ export const Viewport: React.FC<ViewportProps> = ({
     return buffers;
   }, [projectionMode, generator, channels, totalZ, currentTime, width, height]);
 
+  // Compute 3D Extended Depth of Field (EDOF / Focus Stacking - sdedof.dll)
+  const edofBuffers = useMemo(() => {
+    if (projectionMode !== 'edof') return null;
+    const buffers: { [chId: string]: Uint8Array } = {};
+    channels.forEach(ch => {
+      const edof = new Uint8Array(width * height);
+      const maxSharpness = new Float32Array(width * height);
+      
+      // Evaluate local high-frequency sharpness across all Z planes
+      for (let z = 0; z < totalZ; z++) {
+        const slice = generator.generateChannelSlice(ch.id, z, totalZ, currentTime);
+        for (let y = 1; y < height - 1; y++) {
+          for (let x = 1; x < width - 1; x++) {
+            const i = y * width + x;
+            // Local Tenengrad / Laplace sharpness gradient
+            const grad = Math.abs(slice[i] * 4 - slice[i - 1] - slice[i + 1] - slice[i - width] - slice[i + width]);
+            if (grad >= maxSharpness[i]) {
+              maxSharpness[i] = grad;
+              edof[i] = slice[i];
+            }
+          }
+        }
+      }
+      buffers[ch.id] = edof;
+    });
+    return buffers;
+  }, [projectionMode, generator, channels, totalZ, currentTime, width, height]);
+
   // Active raw buffers based on projection mode or real CZI engine
   const rawBuffers = useMemo(() => {
     if (projectionMode === 'mip' && mipBuffers) return mipBuffers;
     if (projectionMode === 'average' && avgBuffers) return avgBuffers;
+    if (projectionMode === 'edof' && edofBuffers) return edofBuffers;
     if (useRealCzi && Object.keys(realCziBuffers).length > 0) return realCziBuffers;
     return simBuffers;
-  }, [projectionMode, mipBuffers, avgBuffers, useRealCzi, realCziBuffers, simBuffers]);
+  }, [projectionMode, mipBuffers, avgBuffers, edofBuffers, useRealCzi, realCziBuffers, simBuffers]);
 
   // Main Canvas Compositing with spatial filters and range indicator
   useEffect(() => {
@@ -265,6 +294,28 @@ export const Viewport: React.FC<ViewportProps> = ({
               src[((y + 1) * width + (x + 1)) * 4 + c] * 1
             ) / 16;
             data[idx + c] = Math.min(255, blur);
+          }
+        }
+      }
+    } else if (processingFilter === 'richardson_lucy') {
+      // 2D/3D Richardson-Lucy Deconvolution iteration simulation
+      const src = new Uint8ClampedArray(data);
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const idx = (y * width + x) * 4;
+          for (let c = 0; c < 3; c++) {
+            // Forward PSF projection (Airy disk Gaussian approximation)
+            const psfBlur = (
+              src[((y - 1) * width + x) * 4 + c] * 0.15 +
+              src[((y + 1) * width + x) * 4 + c] * 0.15 +
+              src[(y * width + (x - 1)) * 4 + c] * 0.15 +
+              src[(y * width + (x + 1)) * 4 + c] * 0.15 +
+              src[idx + c] * 0.4
+            );
+            // Multiplicative correction factor
+            const ratio = psfBlur > 0.01 ? src[idx + c] / psfBlur : 1.0;
+            const deconvolved = src[idx + c] * Math.pow(ratio, 1.4);
+            data[idx + c] = Math.min(255, Math.max(0, deconvolved));
           }
         }
       }

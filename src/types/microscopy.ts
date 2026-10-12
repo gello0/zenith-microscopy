@@ -1,7 +1,7 @@
 export type ViewMode = 'composite' | 'split' | 'ortho3d' | 'gallery';
 export type ActiveTool = 'pan' | 'zoom' | 'crosshair' | 'measure' | 'profile' | 'rect_roi' | 'circle_roi';
-export type ProjectionMode = 'single' | 'mip' | 'average';
-export type ProcessingFilter = 'none' | 'gaussian' | 'unsharp' | 'median' | 'sobel' | 'range_indicator';
+export type ProjectionMode = 'single' | 'mip' | 'average' | 'edof';
+export type ProcessingFilter = 'none' | 'gaussian' | 'unsharp' | 'median' | 'sobel' | 'richardson_lucy' | 'range_indicator';
 
 export interface Channel {
   id: string;
