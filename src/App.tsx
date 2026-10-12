@@ -21,16 +21,30 @@ export const App: React.FC = () => {
   const [pan, setPan] = useState({ x: 0, y: 0 });
 
   const [leftTab, setLeftTab] = useState<'acquisition' | 'metadata'>('acquisition');
+  const [useRealCzi, setUseRealCzi] = useState(false);
+  const [backendOnline, setBackendOnline] = useState(false);
+
+  // Check if Python Zeiss server is running on :8080
+  React.useEffect(() => {
+    fetch('http://localhost:8080/api/status')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.status === 'ONLINE') {
+          setBackendOnline(true);
+        }
+      })
+      .catch(() => setBackendOnline(false));
+  }, []);
 
   const [dimensions, setDimensions] = useState<DimensionState>({
     z: {
-      current: 9, // Center slice in 20-slice stack
-      total: 20,
+      current: 2, // Center slice
+      total: useRealCzi ? 5 : 20,
       stepUm: 0.35
     },
     time: {
       current: 0,
-      total: 12,
+      total: useRealCzi ? 3 : 12,
       intervalSec: 1.5,
       isPlaying: false
     },
@@ -48,9 +62,12 @@ export const App: React.FC = () => {
       <TopNav
         viewMode={viewMode}
         setViewMode={setViewMode}
-        datasetName={metadata.name}
+        datasetName={useRealCzi ? 'test_sample_4ch_zstack.czi' : metadata.name}
         isAcquiring={isAcquiring}
         setIsAcquiring={setIsAcquiring}
+        useRealCzi={useRealCzi}
+        setUseRealCzi={setUseRealCzi}
+        backendOnline={backendOnline}
       />
 
       {/* 2. Main Workstation Area */}
@@ -107,6 +124,7 @@ export const App: React.FC = () => {
             setZoom={setZoom}
             pan={pan}
             setPan={setPan}
+            useRealCzi={useRealCzi}
           />
 
           {/* Bottom Dock: Z-Stack & Time-Series Timeline Sliders */}

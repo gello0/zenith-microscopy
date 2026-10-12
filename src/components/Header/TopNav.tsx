@@ -1,6 +1,6 @@
 import React from 'react';
 import { ViewMode } from '../../types/microscopy';
-import { Layers, Grid, Box, Play, Camera, Disc, Eye, Activity } from 'lucide-react';
+import { Layers, Grid, Box, Play, Camera, Disc, Eye, Activity, Database, CheckCircle2 } from 'lucide-react';
 
 interface TopNavProps {
   viewMode: ViewMode;
@@ -8,6 +8,9 @@ interface TopNavProps {
   datasetName: string;
   isAcquiring: boolean;
   setIsAcquiring: (val: boolean) => void;
+  useRealCzi: boolean;
+  setUseRealCzi: (val: boolean) => void;
+  backendOnline: boolean;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -15,7 +18,10 @@ export const TopNav: React.FC<TopNavProps> = ({
   setViewMode,
   datasetName,
   isAcquiring,
-  setIsAcquiring
+  setIsAcquiring,
+  useRealCzi,
+  setUseRealCzi,
+  backendOnline
 }) => {
   return (
     <header className="top-header">
@@ -31,9 +37,50 @@ export const TopNav: React.FC<TopNavProps> = ({
           </div>
         </div>
         <div style={{ width: '1px', height: '22px', background: 'var(--border-subtle)', margin: '0 8px' }} />
-        <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-          {datasetName}
-        </span>
+
+        {/* Dataset Switcher: Simulated vs Real Zeiss CZI Engine */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <select
+            value={useRealCzi ? 'real' : 'sim'}
+            onChange={e => setUseRealCzi(e.target.value === 'real')}
+            style={{
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid var(--border-medium)',
+              color: 'var(--text-primary)',
+              fontSize: '0.78rem',
+              padding: '4px 10px',
+              borderRadius: '6px',
+              fontFamily: 'var(--font-mono)',
+              outline: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="sim" style={{ background: '#0b0f17' }}>HeLa_Mitosis_4Color_ZStack.czi (Simulation)</option>
+            <option value="real" style={{ background: '#0b0f17' }}>test_sample_4ch_zstack.czi (Zeiss pylibCZIrw)</option>
+          </select>
+
+          {/* Backend Status Badge */}
+          {backendOnline && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                background: 'rgba(34, 197, 94, 0.15)',
+                border: '1px solid rgba(34, 197, 94, 0.3)',
+                fontSize: '0.68rem',
+                color: '#22c55e',
+                fontFamily: 'var(--font-mono)'
+              }}
+              title="Connected to Zeiss pylibCZIrw native engine on :8080"
+            >
+              <CheckCircle2 size={12} />
+              <span>Zeiss CZI Engine Active</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* View Mode Selectors */}

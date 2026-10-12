@@ -15,6 +15,7 @@ interface ViewportProps {
   setZoom: (z: number) => void;
   pan: { x: number; y: number };
   setPan: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
+  useRealCzi?: boolean;
 }
 
 export const Viewport: React.FC<ViewportProps> = ({
@@ -28,7 +29,8 @@ export const Viewport: React.FC<ViewportProps> = ({
   zoom,
   setZoom,
   pan,
-  setPan
+  setPan,
+  useRealCzi = false
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -37,23 +39,50 @@ export const Viewport: React.FC<ViewportProps> = ({
   const [pixelValues, setPixelValues] = useState<{ [chId: string]: number }>({});
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [realCziBuffers, setRealCziBuffers] = useState<{ [chId: string]: Uint8Array }>({});
 
   // Measurement line tool state
   const [measureLine, setMeasureLine] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
 
-  const width = metadata.dimensionsXYZCT.width;
-  const height = metadata.dimensionsXYZCT.height;
+  const width = useRealCzi ? 512 : metadata.dimensionsXYZCT.width;
+  const height = useRealCzi ? 512 : metadata.dimensionsXYZCT.height;
 
   const generator = useMemo(() => new BiologicalImageGenerator(width, height), [width, height]);
 
+  // Fetch real CZI planes from Python Zeiss server when useRealCzi is active
+  useEffect(() => {
+    if (!useRealCzi) return;
+
+    const zIndex = currentZ % 5;
+    const tIndex = currentTime % 3;
+
+    channels.forEach((ch, idx) => {
+      fetch(`http://localhost:8080/api/czi/plane?c=${idx}&z=${zIndex}&t=${tIndex}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.data_b64) {
+            const binStr = atob(data.data_b64);
+            const bytes = new Uint8Array(binStr.length);
+            for (let i = 0; i < binStr.length; i++) {
+              bytes[i] = binStr.charCodeAt(i);
+            }
+            setRealCziBuffers(prev => ({ ...prev, [ch.id]: bytes }));
+          }
+        })
+        .catch(() => {});
+    });
+  }, [useRealCzi, currentZ, currentTime, channels]);
+
   // Pre-generate raw slice buffers for current Z & T
-  const rawBuffers = useMemo(() => {
+  const simBuffers = useMemo(() => {
     const buffers: { [chId: string]: Uint8Array } = {};
     channels.forEach(ch => {
       buffers[ch.id] = generator.generateChannelSlice(ch.id, currentZ, totalZ, currentTime);
     });
     return buffers;
   }, [generator, channels, currentZ, totalZ, currentTime]);
+
+  const rawBuffers = useRealCzi && Object.keys(realCziBuffers).length > 0 ? realCziBuffers : simBuffers;
 
   // Main Canvas Compositing
   useEffect(() => {
