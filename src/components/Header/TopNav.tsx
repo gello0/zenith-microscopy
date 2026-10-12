@@ -8,6 +8,9 @@ interface TopNavProps {
   datasetName: string;
   isAcquiring: boolean;
   setIsAcquiring: (val: boolean) => void;
+  isLive: boolean;
+  setIsLive: (val: boolean) => void;
+  onSnap: () => void;
   useRealCzi: boolean;
   setUseRealCzi: (val: boolean) => void;
   backendOnline: boolean;
@@ -19,6 +22,9 @@ export const TopNav: React.FC<TopNavProps> = ({
   datasetName,
   isAcquiring,
   setIsAcquiring,
+  isLive,
+  setIsLive,
+  onSnap,
   useRealCzi,
   setUseRealCzi,
   backendOnline
@@ -116,18 +122,25 @@ export const TopNav: React.FC<TopNavProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '12px' }}>
           <button
             className="icon-btn"
-            title="Snap Single Image"
-            onClick={() => alert('Snapshot captured and saved to experiment buffer')}
+            title="Snap Single Image (Camera Buffer)"
+            onClick={onSnap}
           >
             <Camera size={16} />
           </button>
+
           <button
             className="icon-btn"
-            title="Live Camera Stream"
-            style={{ color: '#22c55e' }}
+            title={isLive ? 'Stop Live Camera Stream' : 'Start Live Camera Stream (30 FPS)'}
+            onClick={() => setIsLive(!isLive)}
+            style={{
+              color: isLive ? '#22c55e' : 'var(--text-secondary)',
+              background: isLive ? 'rgba(34, 197, 94, 0.2)' : undefined,
+              borderColor: isLive ? '#22c55e' : undefined
+            }}
           >
-            <Activity size={16} />
+            <Activity size={16} className={isLive ? 'pulse' : undefined} />
           </button>
+
           <button
             className="btn-primary"
             onClick={() => setIsAcquiring(!isAcquiring)}

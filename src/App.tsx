@@ -25,7 +25,7 @@ import { LineProfileDock } from './components/Analysis/LineProfileDock';
 import { CellCounterModal } from './components/Analysis/CellCounterModal';
 import { ColocalizationModal } from './components/Analysis/ColocalizationModal';
 import { MeasurementsTableDock } from './components/Analysis/MeasurementsTableDock';
-import { Layers } from 'lucide-react';
+import { Layers, CheckCircle2, Camera } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('composite');
@@ -33,6 +33,8 @@ export const App: React.FC = () => {
   const [channels, setChannels] = useState<Channel[]>(INITIAL_CHANNELS);
   const [metadata, setMetadata] = useState<DatasetMetadata>(INITIAL_METADATA);
   const [isAcquiring, setIsAcquiring] = useState(false);
+  const [isLive, setIsLive] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [zoom, setZoom] = useState(1.0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -87,6 +89,51 @@ export const App: React.FC = () => {
     }
   });
 
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Live Camera Stream loop
+  useEffect(() => {
+    if (!isLive) return;
+
+    showToast('🔴 LIVE Stream Active (Axiocam 702 mono continuous 30 FPS)');
+    const interval = setInterval(() => {
+      // Gentle live camera refresh
+      setDimensions(prev => ({
+        ...prev,
+        z: { ...prev.z }
+      }));
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [isLive]);
+
+  // Automated Multi-Dimensional Experiment Acquisition Sequencer (ZEN ExperimentApiManager)
+  useEffect(() => {
+    if (!isAcquiring) return;
+
+    showToast(`🚀 Experiment Acquisition Started (${dimensions.z.total} Z-Slices, 4 Channels)`);
+    let sliceIdx = 0;
+
+    const timer = setInterval(() => {
+      if (sliceIdx < dimensions.z.total) {
+        setDimensions(prev => ({
+          ...prev,
+          z: { ...prev.z, current: sliceIdx }
+        }));
+        sliceIdx++;
+      } else {
+        clearInterval(timer);
+        setIsAcquiring(false);
+        showToast('✅ Multi-Dimensional Acquisition Completed! CZI container saved to cache.');
+      }
+    }, 500);
+
+    return () => clearInterval(timer);
+  }, [isAcquiring, dimensions.z.total]);
+
   // Time-Series Playback Loop
   useEffect(() => {
     if (!dimensions.time.isPlaying) return;
@@ -103,6 +150,11 @@ export const App: React.FC = () => {
 
     return () => clearInterval(timer);
   }, [dimensions.time.isPlaying]);
+
+  // Snap Single Image handler
+  const handleSnap = () => {
+    showToast(`📸 Snapshot Captured: Plane [Z=${dimensions.z.current + 1}/${dimensions.z.total}, T=${dimensions.time.current + 1}, 4-Ch]`);
+  };
 
   // Publication Snapshot Export
   const handleExportSnapshot = () => {
@@ -141,6 +193,7 @@ export const App: React.FC = () => {
     link.download = `zenith_${Date.now()}_publication.png`;
     link.href = exportCanvas.toDataURL('image/png');
     link.click();
+    showToast('💾 Publication Figure Exported with Calibrated Scale Bar');
   };
 
   const handleApplyRoisFromCellCounter = (newRois: RoiItem[]) => {
@@ -156,6 +209,7 @@ export const App: React.FC = () => {
     }));
     setMeasurements(prev => [...newRecords, ...prev]);
     setIsMeasurementsTableOpen(true);
+    showToast(`🔬 Applied ${newRois.length} Segmented Nuclei to Measurement Table`);
   };
 
   return (
@@ -167,10 +221,42 @@ export const App: React.FC = () => {
         datasetName={useRealCzi ? 'test_sample_4ch_zstack.czi' : metadata.name}
         isAcquiring={isAcquiring}
         setIsAcquiring={setIsAcquiring}
+        isLive={isLive}
+        setIsLive={setIsLive}
+        onSnap={handleSnap}
         useRealCzi={useRealCzi}
         setUseRealCzi={setUseRealCzi}
         backendOnline={backendOnline}
       />
+
+      {/* Floating Scientific Toast Notification */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '56px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(15, 23, 42, 0.95)',
+            border: '1px solid var(--accent-primary)',
+            color: '#f8fafc',
+            padding: '8px 18px',
+            borderRadius: '20px',
+            fontSize: '0.76rem',
+            fontFamily: 'var(--font-mono)',
+            fontWeight: 600,
+            zIndex: 150,
+            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            animation: 'fadeIn 0.2s ease-out'
+          }}
+        >
+          <CheckCircle2 size={14} color="#38bdf8" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
       {/* 2. Main Workstation Area */}
       <main className="main-workspace">
@@ -324,8 +410,8 @@ export const App: React.FC = () => {
       <footer className="status-bar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div className="status-item">
-            <div className="status-dot" />
-            <span>Camera: Ready (Axiocam 702 mono)</span>
+            <div className="status-dot" style={{ background: isLive ? '#22c55e' : undefined }} />
+            <span>Camera: {isLive ? 'LIVE (30 FPS Stream)' : 'Ready (Axiocam 702 mono)'}</span>
           </div>
           <div className="status-item">
             <span>Stage: Connected (X: 12.4mm, Y: -8.4mm, Z: 4.52mm)</span>
