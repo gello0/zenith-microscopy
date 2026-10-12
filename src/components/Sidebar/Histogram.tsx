@@ -33,23 +33,23 @@ export const Histogram: React.FC<HistogramProps> = ({
   const maxPct = (channel.maxDisplay / 255) * 100;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-        <span>Min: {channel.minDisplay}</span>
-        <span>Max: {channel.maxDisplay}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--zen-text-muted)', fontFamily: 'var(--font-mono)' }}>
+        <span>Min (Black): {channel.minDisplay}</span>
+        <span>Max (White): {channel.maxDisplay}</span>
       </div>
 
       <div
         style={{
-          height: '48px',
-          background: 'rgba(0, 0, 0, 0.4)',
-          borderRadius: '6px',
+          height: '46px',
+          background: '#121212',
+          borderRadius: '2px',
           position: 'relative',
           overflow: 'hidden',
           display: 'flex',
           alignItems: 'flex-end',
           padding: '0 2px',
-          border: '1px solid var(--border-subtle)'
+          border: '1px solid var(--zen-border-subtle)'
         }}
       >
         {/* Histogram Bins */}
@@ -60,7 +60,7 @@ export const Histogram: React.FC<HistogramProps> = ({
               flex: 1,
               height: `${h}px`,
               background: idx * 4 >= channel.minDisplay && idx * 4 <= channel.maxDisplay ? channel.color : 'rgba(255, 255, 255, 0.1)',
-              opacity: idx * 4 >= channel.minDisplay && idx * 4 <= channel.maxDisplay ? 0.8 : 0.25,
+              opacity: idx * 4 >= channel.minDisplay && idx * 4 <= channel.maxDisplay ? 0.85 : 0.2,
               margin: '0 0.5px'
             }}
           />
@@ -75,7 +75,7 @@ export const Histogram: React.FC<HistogramProps> = ({
             bottom: 0,
             width: '2px',
             background: '#ffffff',
-            boxShadow: '0 0 6px #ffffff',
+            boxShadow: '0 0 4px #ffffff',
             pointerEvents: 'none'
           }}
         />
@@ -89,32 +89,57 @@ export const Histogram: React.FC<HistogramProps> = ({
             bottom: 0,
             width: '2px',
             background: channel.color,
-            boxShadow: `0 0 6px ${channel.color}`,
+            boxShadow: `0 0 5px ${channel.color}`,
             pointerEvents: 'none'
           }}
         />
       </div>
 
-      <div style={{ display: 'flex', gap: '8px' }}>
+      {/* ZEISS ZEN Standard 4 Quick-Adjust Buttons */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
         <button
-          className="hud-btn"
-          style={{ flex: 1, height: '24px', fontSize: '0.7rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px' }}
+          className="action-btn"
+          style={{ padding: '3px 2px', fontSize: '0.68rem', textAlign: 'center' }}
           onClick={() => {
-            onMinChange(10);
-            onMaxChange(230);
+            onMinChange(12);
+            onMaxChange(225);
           }}
+          title="Auto Contrast based on cumulative histogram"
         >
-          Auto Contrast
+          Auto
         </button>
         <button
-          className="hud-btn"
-          style={{ flex: 1, height: '24px', fontSize: '0.7rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px' }}
+          className="action-btn"
+          style={{ padding: '3px 2px', fontSize: '0.68rem', textAlign: 'center' }}
+          onClick={() => {
+            onMinChange(18);
+            onMaxChange(210);
+          }}
+          title="Best Fit (99.8% histogram percentile)"
+        >
+          Best Fit
+        </button>
+        <button
+          className="action-btn"
+          style={{ padding: '3px 2px', fontSize: '0.68rem', textAlign: 'center' }}
           onClick={() => {
             onMinChange(0);
             onMaxChange(255);
           }}
+          title="Stretch to full 0-255 dynamic range"
         >
-          Reset Range
+          Min/Max
+        </button>
+        <button
+          className="action-btn"
+          style={{ padding: '3px 2px', fontSize: '0.68rem', textAlign: 'center' }}
+          onClick={() => {
+            onMinChange(0);
+            onMaxChange(255);
+          }}
+          title="Reset to default linear range"
+        >
+          Reset
         </button>
       </div>
     </div>

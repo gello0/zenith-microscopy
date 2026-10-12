@@ -12,6 +12,7 @@ import {
   ProcessingFilter
 } from './types/microscopy';
 import { INITIAL_CHANNELS, INITIAL_METADATA } from './services/sampleData';
+import { ZenTitleBar } from './components/Header/ZenTitleBar';
 import { TopNav } from './components/Header/TopNav';
 import { Viewport } from './components/Viewer/Viewport';
 import { ToolBar } from './components/Viewer/ToolBar';
@@ -25,7 +26,7 @@ import { LineProfileDock } from './components/Analysis/LineProfileDock';
 import { CellCounterModal } from './components/Analysis/CellCounterModal';
 import { ColocalizationModal } from './components/Analysis/ColocalizationModal';
 import { MeasurementsTableDock } from './components/Analysis/MeasurementsTableDock';
-import { Layers, CheckCircle2, Camera } from 'lucide-react';
+import { Layers, CheckCircle2 } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('composite');
@@ -38,6 +39,9 @@ export const App: React.FC = () => {
 
   const [zoom, setZoom] = useState(1.0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+
+  // ZEISS Workflow Mode: Locate, Acquisition, Processing
+  const [activeWorkflow, setActiveWorkflow] = useState<'locate' | 'acquisition' | 'processing'>('acquisition');
 
   // Sidebar navigation tab
   const [leftTab, setLeftTab] = useState<'acquisition' | 'tiles' | 'processing' | 'metadata'>('acquisition');
@@ -56,6 +60,19 @@ export const App: React.FC = () => {
   // Processing & Projections
   const [projectionMode, setProjectionMode] = useState<ProjectionMode>('single');
   const [processingFilter, setProcessingFilter] = useState<ProcessingFilter>('none');
+
+  // Synchronize workflow tab with sidebar
+  const handleWorkflowChange = (w: 'locate' | 'acquisition' | 'processing') => {
+    setActiveWorkflow(w);
+    if (w === 'processing') {
+      setLeftTab('processing');
+    } else if (w === 'acquisition') {
+      setLeftTab('acquisition');
+    } else if (w === 'locate') {
+      setIsLive(true);
+      setLeftTab('acquisition');
+    }
+  };
 
   // Check if Python Zeiss server is running on :8080
   useEffect(() => {
@@ -100,7 +117,6 @@ export const App: React.FC = () => {
 
     showToast('🔴 LIVE Stream Active (Axiocam 702 mono continuous 30 FPS)');
     const interval = setInterval(() => {
-      // Gentle live camera refresh
       setDimensions(prev => ({
         ...prev,
         z: { ...prev.z }
@@ -179,18 +195,18 @@ export const App: React.FC = () => {
 
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(barX, barY - 4, barPx, 4);
-    ctx.font = 'bold 12px "JetBrains Mono", monospace';
+    ctx.font = 'bold 12px "Segoe UI", Tahoma, sans-serif';
     ctx.fillText(`${barUm} µm`, barX + barPx / 2 - 16, barY - 10);
 
     // Draw scientific metadata stamp
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-    ctx.fillRect(exportCanvas.width - 240, exportCanvas.height - 36, 230, 28);
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = '10px "JetBrains Mono", monospace';
-    ctx.fillText(`ZENITH BIO-IMAGING | ${metadata.objective.split(' ')[0]}`, exportCanvas.width - 230, exportCanvas.height - 18);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillRect(exportCanvas.width - 260, exportCanvas.height - 36, 250, 28);
+    ctx.fillStyle = '#007acc';
+    ctx.font = 'bold 11px "Segoe UI", Tahoma, sans-serif';
+    ctx.fillText(`ZEISS ZEN | ${metadata.objective.split(' ')[0]}`, exportCanvas.width - 245, exportCanvas.height - 18);
 
     const link = document.createElement('a');
-    link.download = `zenith_${Date.now()}_publication.png`;
+    link.download = `zen_${Date.now()}_snapshot.png`;
     link.href = exportCanvas.toDataURL('image/png');
     link.click();
     showToast('💾 Publication Figure Exported with Calibrated Scale Bar');
@@ -212,13 +228,16 @@ export const App: React.FC = () => {
     showToast(`🔬 Applied ${newRois.length} Segmented Nuclei to Measurement Table`);
   };
 
+  const currentDatasetName = useRealCzi ? 'test_sample_4ch_zstack.czi' : metadata.name;
+
   return (
     <div className="app-container">
-      {/* 1. Top Navigation & Action Header */}
+      {/* 1. Official ZEISS Window Titlebar & Menu Bar */}
+      <ZenTitleBar datasetName={currentDatasetName} />
+
+      {/* 2. Official ZEISS Action Bar (Locate, Acquisition, Processing & Triggers) */}
       <TopNav
-        viewMode={viewMode}
-        setViewMode={setViewMode}
-        datasetName={useRealCzi ? 'test_sample_4ch_zstack.czi' : metadata.name}
+        datasetName={currentDatasetName}
         isAcquiring={isAcquiring}
         setIsAcquiring={setIsAcquiring}
         isLive={isLive}
@@ -227,6 +246,8 @@ export const App: React.FC = () => {
         useRealCzi={useRealCzi}
         setUseRealCzi={setUseRealCzi}
         backendOnline={backendOnline}
+        activeWorkflow={activeWorkflow}
+        setActiveWorkflow={handleWorkflowChange}
       />
 
       {/* Floating Scientific Toast Notification */}
@@ -234,40 +255,38 @@ export const App: React.FC = () => {
         <div
           style={{
             position: 'fixed',
-            top: '56px',
+            top: '76px',
             left: '50%',
             transform: 'translateX(-50%)',
-            background: 'rgba(15, 23, 42, 0.95)',
-            border: '1px solid var(--accent-primary)',
+            background: '#1e1e1e',
+            border: '1px solid var(--zen-blue)',
             color: '#f8fafc',
-            padding: '8px 18px',
-            borderRadius: '20px',
-            fontSize: '0.76rem',
-            fontFamily: 'var(--font-mono)',
+            padding: '6px 16px',
+            borderRadius: '3px',
+            fontSize: '0.74rem',
+            fontFamily: 'var(--font-zen)',
             fontWeight: 600,
             zIndex: 150,
-            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.8)',
+            boxShadow: '0 6px 25px rgba(0, 0, 0, 0.8)',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            animation: 'fadeIn 0.2s ease-out'
+            gap: '8px'
           }}
         >
-          <CheckCircle2 size={14} color="#38bdf8" />
+          <CheckCircle2 size={13} color="#007acc" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* 2. Main Workstation Area */}
+      {/* 3. Main Three-Column Desktop Workstation */}
       <main className="main-workspace">
-        {/* Left Sidebar: Experiment Acquisition, Tiles, Processing, & Metadata */}
+        {/* Left Sidebar: Tool Tree (Experiment Manager, Channels, Z-Stack, Tiles) */}
         <aside className="left-sidebar">
           <div className="sidebar-tabs" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
             <button
               className={`sidebar-tab-btn ${leftTab === 'acquisition' ? 'active' : ''}`}
               onClick={() => setLeftTab('acquisition')}
               title="Acquisition Hardware Setup"
-              style={{ padding: '8px 2px', fontSize: '0.7rem' }}
             >
               Acquire
             </button>
@@ -275,7 +294,6 @@ export const App: React.FC = () => {
               className={`sidebar-tab-btn ${leftTab === 'tiles' ? 'active' : ''}`}
               onClick={() => setLeftTab('tiles')}
               title="Tile Region & Stage Mosaic"
-              style={{ padding: '8px 2px', fontSize: '0.7rem' }}
             >
               Tiles
             </button>
@@ -283,7 +301,6 @@ export const App: React.FC = () => {
               className={`sidebar-tab-btn ${leftTab === 'processing' ? 'active' : ''}`}
               onClick={() => setLeftTab('processing')}
               title="Z-Stack Projections & Convolutions"
-              style={{ padding: '8px 2px', fontSize: '0.7rem' }}
             >
               Process
             </button>
@@ -291,7 +308,6 @@ export const App: React.FC = () => {
               className={`sidebar-tab-btn ${leftTab === 'metadata' ? 'active' : ''}`}
               onClick={() => setLeftTab('metadata')}
               title="Microscope Hardware Calibration"
-              style={{ padding: '8px 2px', fontSize: '0.7rem' }}
             >
               Info
             </button>
@@ -317,9 +333,48 @@ export const App: React.FC = () => {
           </div>
         </aside>
 
-        {/* Center Stage: Floating HUD Toolbar, Canvas Viewport & Dimension Sliders */}
+        {/* Center Stage: Document Tabs, View Modes, Image Toolbar, Viewport & Dimensions */}
         <section className="center-stage">
-          {/* Floating Viewport HUD Toolbar */}
+          {/* Document Tab Bar */}
+          <div className="zen-doc-tab-bar">
+            <div className={`zen-doc-tab ${!useRealCzi ? 'active' : ''}`} onClick={() => setUseRealCzi(false)}>
+              <span>📄 HeLa_Mitosis_4Color_ZStack.czi</span>
+              <span style={{ fontSize: '10px', color: 'var(--zen-text-muted)' }}>[16-bit 512×512]</span>
+            </div>
+            <div className={`zen-doc-tab ${useRealCzi ? 'active' : ''}`} onClick={() => setUseRealCzi(true)}>
+              <span>📄 test_sample_4ch_zstack.czi</span>
+              <span style={{ fontSize: '10px', color: '#22c55e' }}>[Zeiss CZI]</span>
+            </div>
+          </div>
+
+          {/* View Mode Bar */}
+          <div className="zen-viewmode-bar">
+            <div className="zen-viewmode-group">
+              <button
+                className={`zen-viewmode-btn ${viewMode === 'composite' ? 'active' : ''}`}
+                onClick={() => setViewMode('composite')}
+              >
+                2D Composite
+              </button>
+              <button
+                className={`zen-viewmode-btn ${viewMode === 'split' ? 'active' : ''}`}
+                onClick={() => setViewMode('split')}
+              >
+                Split Channels
+              </button>
+              <button
+                className={`zen-viewmode-btn ${viewMode === 'ortho3d' ? 'active' : ''}`}
+                onClick={() => setViewMode('ortho3d')}
+              >
+                3D Ortho
+              </button>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--zen-text-muted)', fontFamily: 'var(--font-mono)' }}>
+              Zoom: {(zoom * 100).toFixed(0)}% | Voxel: {metadata.voxelSizeUm.x} µm/px
+            </div>
+          </div>
+
+          {/* Image Toolbar Strip */}
           <ToolBar
             activeTool={activeTool}
             setActiveTool={setActiveTool}
@@ -395,8 +450,8 @@ export const App: React.FC = () => {
         <aside className="right-sidebar">
           <div className="sidebar-tabs">
             <div className="sidebar-tab-btn active" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-              <Layers size={14} color="#38bdf8" />
-              <span>Channels & Display Adjustments</span>
+              <Layers size={13} color="#007acc" />
+              <span>Display & Channels</span>
             </div>
           </div>
 
@@ -406,7 +461,7 @@ export const App: React.FC = () => {
         </aside>
       </main>
 
-      {/* 3. Bottom Status Bar */}
+      {/* 4. Bottom Status Bar */}
       <footer className="status-bar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div className="status-item">
@@ -420,7 +475,7 @@ export const App: React.FC = () => {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <span>Objective: {metadata.objective.split(' ')[0]}</span>
-          <span style={{ color: projectionMode !== 'single' ? '#38bdf8' : 'inherit' }}>
+          <span style={{ color: projectionMode !== 'single' ? '#007acc' : 'inherit' }}>
             Z-Mode: {projectionMode.toUpperCase()}
           </span>
           <span style={{ color: processingFilter !== 'none' ? '#a855f7' : 'inherit' }}>
@@ -431,7 +486,7 @@ export const App: React.FC = () => {
         </div>
       </footer>
 
-      {/* 4. Analysis Modals */}
+      {/* 5. Analysis Modals */}
       {isCellCounterOpen && (
         <CellCounterModal
           onClose={() => setIsCellCounterOpen(false)}
