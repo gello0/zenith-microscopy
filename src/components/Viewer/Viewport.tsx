@@ -1,5 +1,15 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { Channel, ViewMode, ActiveTool, DatasetMetadata } from '../../types/microscopy';
+import {
+  Channel,
+  ViewMode,
+  ActiveTool,
+  DatasetMetadata,
+  LineProfilePoint,
+  RoiItem,
+  ProjectionMode,
+  ProcessingFilter,
+  MeasurementRecord
+} from '../../types/microscopy';
 import { generateLutTable } from '../../services/lutEngine';
 import { BiologicalImageGenerator } from '../../services/sampleData';
 
@@ -7,6 +17,8 @@ interface ViewportProps {
   channels: Channel[];
   viewMode: ViewMode;
   activeTool: ActiveTool;
+  projectionMode?: ProjectionMode;
+  processingFilter?: ProcessingFilter;
   currentZ: number;
   totalZ: number;
   currentTime: number;
@@ -16,12 +28,17 @@ interface ViewportProps {
   pan: { x: number; y: number };
   setPan: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
   useRealCzi?: boolean;
+  onProfileDataUpdate?: (data: LineProfilePoint[], totalLengthUm: number) => void;
+  rois?: RoiItem[];
+  onAddMeasurement?: (m: MeasurementRecord) => void;
 }
 
 export const Viewport: React.FC<ViewportProps> = ({
   channels,
   viewMode,
   activeTool,
+  projectionMode = 'single',
+  processingFilter = 'none',
   currentZ,
   totalZ,
   currentTime,
@@ -30,7 +47,10 @@ export const Viewport: React.FC<ViewportProps> = ({
   setZoom,
   pan,
   setPan,
-  useRealCzi = false
+  useRealCzi = false,
+  onProfileDataUpdate,
+  rois = [],
+  onAddMeasurement
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -41,11 +61,15 @@ export const Viewport: React.FC<ViewportProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [realCziBuffers, setRealCziBuffers] = useState<{ [chId: string]: Uint8Array }>({});
 
-  // Measurement line tool state
+  // Active interaction vectors
   const [measureLine, setMeasureLine] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [profileLine, setProfileLine] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [rectShape, setRectShape] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [circleShape, setCircleShape] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
 
   const width = useRealCzi ? 512 : metadata.dimensionsXYZCT.width;
   const height = useRealCzi ? 512 : metadata.dimensionsXYZCT.height;
+  const pixelSizeUm = metadata.voxelSizeUm.x; // e.g. 0.098 µm/px
 
   const generator = useMemo(() => new BiologicalImageGenerator(width, height), [width, height]);
 
@@ -82,9 +106,53 @@ export const Viewport: React.FC<ViewportProps> = ({
     return buffers;
   }, [generator, channels, currentZ, totalZ, currentTime]);
 
-  const rawBuffers = useRealCzi && Object.keys(realCziBuffers).length > 0 ? realCziBuffers : simBuffers;
+  // Compute 3D Maximum Intensity Projection (MIP) across all Z slices
+  const mipBuffers = useMemo(() => {
+    if (projectionMode !== 'mip') return null;
+    const buffers: { [chId: string]: Uint8Array } = {};
+    channels.forEach(ch => {
+      const mip = new Uint8Array(width * height);
+      for (let z = 0; z < totalZ; z++) {
+        const slice = generator.generateChannelSlice(ch.id, z, totalZ, currentTime);
+        for (let i = 0; i < slice.length; i++) {
+          if (slice[i] > mip[i]) mip[i] = slice[i];
+        }
+      }
+      buffers[ch.id] = mip;
+    });
+    return buffers;
+  }, [projectionMode, generator, channels, totalZ, currentTime, width, height]);
 
-  // Main Canvas Compositing
+  // Compute 3D Average Intensity Projection across all Z slices
+  const avgBuffers = useMemo(() => {
+    if (projectionMode !== 'average') return null;
+    const buffers: { [chId: string]: Uint8Array } = {};
+    channels.forEach(ch => {
+      const accum = new Float32Array(width * height);
+      for (let z = 0; z < totalZ; z++) {
+        const slice = generator.generateChannelSlice(ch.id, z, totalZ, currentTime);
+        for (let i = 0; i < slice.length; i++) {
+          accum[i] += slice[i];
+        }
+      }
+      const avg = new Uint8Array(width * height);
+      for (let i = 0; i < avg.length; i++) {
+        avg[i] = Math.round(accum[i] / totalZ);
+      }
+      buffers[ch.id] = avg;
+    });
+    return buffers;
+  }, [projectionMode, generator, channels, totalZ, currentTime, width, height]);
+
+  // Active raw buffers based on projection mode or real CZI engine
+  const rawBuffers = useMemo(() => {
+    if (projectionMode === 'mip' && mipBuffers) return mipBuffers;
+    if (projectionMode === 'average' && avgBuffers) return avgBuffers;
+    if (useRealCzi && Object.keys(realCziBuffers).length > 0) return realCziBuffers;
+    return simBuffers;
+  }, [projectionMode, mipBuffers, avgBuffers, useRealCzi, realCziBuffers, simBuffers]);
+
+  // Main Canvas Compositing with spatial filters and range indicator
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -123,21 +191,140 @@ export const Viewport: React.FC<ViewportProps> = ({
       }
     });
 
-    ctx.putImageData(imgData, 0, 0);
-  }, [channels, rawBuffers, width, height]);
+    // Apply Spatial Filters (Gaussian blur, Sobel edge, Unsharp mask, Range indicator)
+    if (processingFilter === 'range_indicator') {
+      // ZEISS Range Indicator: 0 DN is pure blue, 255 DN (clipping) is pure red
+      for (let i = 0; i < width * height; i++) {
+        const idx = i * 4;
+        const maxVal = Math.max(data[idx], data[idx + 1], data[idx + 2]);
+        if (maxVal === 0) {
+          data[idx] = 0;
+          data[idx + 1] = 50;
+          data[idx + 2] = 255;
+        } else if (maxVal >= 252) {
+          data[idx] = 255;
+          data[idx + 1] = 20;
+          data[idx + 2] = 40;
+        }
+      }
+    } else if (processingFilter === 'sobel') {
+      const src = new Uint8ClampedArray(data);
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const idx = (y * width + x) * 4;
+          // Sobel operator on luminance
+          const lum = (px: number, py: number) => {
+            const pIdx = (py * width + px) * 4;
+            return 0.299 * src[pIdx] + 0.587 * src[pIdx + 1] + 0.114 * src[pIdx + 2];
+          };
+          const gx =
+            -lum(x - 1, y - 1) + lum(x + 1, y - 1) +
+            -2 * lum(x - 1, y) + 2 * lum(x + 1, y) +
+            -lum(x - 1, y + 1) + lum(x + 1, y + 1);
+          const gy =
+            -lum(x - 1, y - 1) - 2 * lum(x, y - 1) - lum(x + 1, y - 1) +
+            lum(x - 1, y + 1) + 2 * lum(x, y + 1) + lum(x + 1, y + 1);
+          const mag = Math.min(255, Math.hypot(gx, gy));
+          data[idx] = mag * 0.4;
+          data[idx + 1] = mag;
+          data[idx + 2] = mag * 0.9;
+        }
+      }
+    } else if (processingFilter === 'unsharp') {
+      const src = new Uint8ClampedArray(data);
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const idx = (y * width + x) * 4;
+          for (let c = 0; c < 3; c++) {
+            const blur = (
+              src[((y - 1) * width + x) * 4 + c] +
+              src[((y + 1) * width + x) * 4 + c] +
+              src[(y * width + (x - 1)) * 4 + c] +
+              src[(y * width + (x + 1)) * 4 + c]
+            ) / 4;
+            const sharp = src[idx + c] + (src[idx + c] - blur) * 1.5;
+            data[idx + c] = Math.min(255, Math.max(0, sharp));
+          }
+        }
+      }
+    } else if (processingFilter === 'gaussian') {
+      const src = new Uint8ClampedArray(data);
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const idx = (y * width + x) * 4;
+          for (let c = 0; c < 3; c++) {
+            const blur = (
+              src[((y - 1) * width + (x - 1)) * 4 + c] * 1 +
+              src[((y - 1) * width + x) * 4 + c] * 2 +
+              src[((y - 1) * width + (x + 1)) * 4 + c] * 1 +
+              src[(y * width + (x - 1)) * 4 + c] * 2 +
+              src[(y * width + x) * 4 + c] * 4 +
+              src[(y * width + (x + 1)) * 4 + c] * 2 +
+              src[((y + 1) * width + (x - 1)) * 4 + c] * 1 +
+              src[((y + 1) * width + x) * 4 + c] * 2 +
+              src[((y + 1) * width + (x + 1)) * 4 + c] * 1
+            ) / 16;
+            data[idx + c] = Math.min(255, blur);
+          }
+        }
+      }
+    }
 
-  // Mouse Handlers for Pan, Zoom, and Pixel Inspector
+    ctx.putImageData(imgData, 0, 0);
+  }, [channels, rawBuffers, width, height, processingFilter]);
+
+  // Sampling helper for line intensity profile
+  const sampleProfileVector = (line: { x1: number; y1: number; x2: number; y2: number }) => {
+    const distPx = Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
+    if (distPx < 3) return;
+
+    const totalLengthUm = distPx * pixelSizeUm;
+    const numPoints = Math.max(10, Math.min(300, Math.round(distPx)));
+    const points: LineProfilePoint[] = [];
+
+    for (let i = 0; i <= numPoints; i++) {
+      const t = i / numPoints;
+      const px = Math.min(width - 1, Math.max(0, Math.round(line.x1 + t * (line.x2 - line.x1))));
+      const py = Math.min(height - 1, Math.max(0, Math.round(line.y1 + t * (line.y2 - line.y1))));
+      const pixelIdx = py * width + px;
+
+      const intensities: { [chId: string]: number } = {};
+      channels.forEach(ch => {
+        intensities[ch.id] = rawBuffers[ch.id] ? rawBuffers[ch.id][pixelIdx] : 0;
+      });
+
+      points.push({
+        distanceUm: t * totalLengthUm,
+        intensities
+      });
+    }
+
+    if (onProfileDataUpdate) {
+      onProfileDataUpdate(points, totalLengthUm);
+    }
+  };
+
+  // Mouse Handlers
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0) {
       if (activeTool === 'pan' || e.shiftKey) {
         setIsDragging(true);
         setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-      } else if (activeTool === 'measure') {
+      } else {
         const rect = canvasRef.current?.getBoundingClientRect();
         if (rect) {
           const imgX = Math.round((e.clientX - rect.left) / zoom);
           const imgY = Math.round((e.clientY - rect.top) / zoom);
-          setMeasureLine({ x1: imgX, y1: imgY, x2: imgX, y2: imgY });
+
+          if (activeTool === 'measure') {
+            setMeasureLine({ x1: imgX, y1: imgY, x2: imgX, y2: imgY });
+          } else if (activeTool === 'profile') {
+            setProfileLine({ x1: imgX, y1: imgY, x2: imgX, y2: imgY });
+          } else if (activeTool === 'rect_roi') {
+            setRectShape({ x1: imgX, y1: imgY, x2: imgX, y2: imgY });
+          } else if (activeTool === 'circle_roi') {
+            setCircleShape({ x1: imgX, y1: imgY, x2: imgX, y2: imgY });
+          }
         }
       }
     }
@@ -147,15 +334,6 @@ export const Viewport: React.FC<ViewportProps> = ({
     if (isDragging) {
       setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
       return;
-    }
-
-    if (activeTool === 'measure' && measureLine) {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (rect) {
-        const imgX = Math.round((e.clientX - rect.left) / zoom);
-        const imgY = Math.round((e.clientY - rect.top) / zoom);
-        setMeasureLine(prev => prev ? { ...prev, x2: imgX, y2: imgY } : null);
-      }
     }
 
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -174,11 +352,79 @@ export const Viewport: React.FC<ViewportProps> = ({
       } else {
         setCursorPos(null);
       }
+
+      if (activeTool === 'measure' && measureLine) {
+        setMeasureLine(prev => prev ? { ...prev, x2: imgX, y2: imgY } : null);
+      } else if (activeTool === 'profile' && profileLine) {
+        const updated = { ...profileLine, x2: imgX, y2: imgY };
+        setProfileLine(updated);
+        sampleProfileVector(updated);
+      } else if (activeTool === 'rect_roi' && rectShape) {
+        setRectShape(prev => prev ? { ...prev, x2: imgX, y2: imgY } : null);
+      } else if (activeTool === 'circle_roi' && circleShape) {
+        setCircleShape(prev => prev ? { ...prev, x2: imgX, y2: imgY } : null);
+      }
     }
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
+    if (isDragging) {
+      setIsDragging(false);
+      return;
+    }
+
+    // Commit measurement line
+    if (activeTool === 'measure' && measureLine) {
+      const lengthUm = Math.hypot(measureLine.x2 - measureLine.x1, measureLine.y2 - measureLine.y1) * pixelSizeUm;
+      if (lengthUm > 0.5 && onAddMeasurement) {
+        onAddMeasurement({
+          id: `meas-${Date.now()}`,
+          type: 'line',
+          label: `Line Caliper (${lengthUm.toFixed(1)} µm)`,
+          lengthUm,
+          meanIntensity: Math.round(Object.values(pixelValues).reduce((a, b) => a + b, 0) / (channels.length || 1)),
+          timestamp: new Date().toLocaleTimeString()
+        });
+      }
+    }
+
+    // Commit profile vector
+    if (activeTool === 'profile' && profileLine) {
+      sampleProfileVector(profileLine);
+    }
+
+    // Commit rectangle ROI
+    if (activeTool === 'rect_roi' && rectShape) {
+      const wUm = Math.abs(rectShape.x2 - rectShape.x1) * pixelSizeUm;
+      const hUm = Math.abs(rectShape.y2 - rectShape.y1) * pixelSizeUm;
+      const areaUm2 = wUm * hUm;
+      if (areaUm2 > 2 && onAddMeasurement) {
+        onAddMeasurement({
+          id: `rect-${Date.now()}`,
+          type: 'rect',
+          label: `Rect ROI (${wUm.toFixed(1)}×${hUm.toFixed(1)} µm)`,
+          areaUm2,
+          meanIntensity: Math.round(Object.values(pixelValues).reduce((a, b) => a + b, 0) / (channels.length || 1)),
+          timestamp: new Date().toLocaleTimeString()
+        });
+      }
+    }
+
+    // Commit circle ROI
+    if (activeTool === 'circle_roi' && circleShape) {
+      const radiusUm = Math.hypot(circleShape.x2 - circleShape.x1, circleShape.y2 - circleShape.y1) * pixelSizeUm;
+      const areaUm2 = Math.PI * radiusUm * radiusUm;
+      if (areaUm2 > 2 && onAddMeasurement) {
+        onAddMeasurement({
+          id: `circ-${Date.now()}`,
+          type: 'circle',
+          label: `Circle ROI (r=${radiusUm.toFixed(1)} µm)`,
+          areaUm2,
+          meanIntensity: Math.round(Object.values(pixelValues).reduce((a, b) => a + b, 0) / (channels.length || 1)),
+          timestamp: new Date().toLocaleTimeString()
+        });
+      }
+    }
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -188,14 +434,12 @@ export const Viewport: React.FC<ViewportProps> = ({
   };
 
   // Physical Scale bar calculation (in micrometers)
-  const pixelSizeUm = metadata.voxelSizeUm.x; // e.g. 0.098 µm/pixel
   const scaleBarTargetPixels = 120; // nominal on-screen length in px
   const targetUm = (scaleBarTargetPixels / zoom) * pixelSizeUm;
-  // Round to nice round number (e.g. 10, 20, 50, 100 µm)
   const roundedUm = targetUm > 50 ? 50 : targetUm > 20 ? 20 : targetUm > 10 ? 10 : 5;
   const scaleBarScreenPixels = (roundedUm / pixelSizeUm) * zoom;
 
-  // Measurement distance calculation
+  // Active measurement distance in µm
   const measuredDistanceUm = measureLine
     ? (Math.hypot(measureLine.x2 - measureLine.x1, measureLine.y2 - measureLine.y1) * pixelSizeUm).toFixed(2)
     : null;
@@ -244,6 +488,29 @@ export const Viewport: React.FC<ViewportProps> = ({
               }}
             />
 
+            {/* Projection Mode Badge */}
+            {projectionMode !== 'single' && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 10,
+                  left: 10,
+                  background: 'rgba(56, 189, 248, 0.85)',
+                  color: '#030712',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  fontFamily: 'var(--font-mono)',
+                  letterSpacing: '0.05em',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                  pointerEvents: 'none'
+                }}
+              >
+                {projectionMode === 'mip' ? 'MIP PROJECTION' : 'AVG PROJECTION'} (Z: 1-{totalZ})
+              </div>
+            )}
+
             {/* Crosshair Overlay */}
             {activeTool === 'crosshair' && cursorPos && (
               <>
@@ -272,31 +539,133 @@ export const Viewport: React.FC<ViewportProps> = ({
               </>
             )}
 
-            {/* Measurement Line Overlay */}
-            {measureLine && (
-              <svg
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: width,
-                  height: height,
-                  pointerEvents: 'none'
-                }}
-              >
-                <line
-                  x1={measureLine.x1}
-                  y1={measureLine.y1}
-                  x2={measureLine.x2}
-                  y2={measureLine.y2}
-                  stroke="#facc15"
+            {/* Calibrated Geometric Overlays (SVG) */}
+            <svg
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: width,
+                height: height,
+                pointerEvents: 'none'
+              }}
+            >
+              {/* 1. Distance Caliper Line */}
+              {measureLine && (
+                <g>
+                  <line
+                    x1={measureLine.x1}
+                    y1={measureLine.y1}
+                    x2={measureLine.x2}
+                    y2={measureLine.y2}
+                    stroke="#facc15"
+                    strokeWidth="2"
+                    strokeDasharray="4 2"
+                  />
+                  <circle cx={measureLine.x1} cy={measureLine.y1} r="3" fill="#facc15" />
+                  <circle cx={measureLine.x2} cy={measureLine.y2} r="3" fill="#facc15" />
+                  <text
+                    x={(measureLine.x1 + measureLine.x2) / 2 + 6}
+                    y={(measureLine.y1 + measureLine.y2) / 2 - 6}
+                    fill="#facc15"
+                    fontSize="11"
+                    fontFamily="JetBrains Mono"
+                    fontWeight="bold"
+                  >
+                    {measuredDistanceUm} µm
+                  </text>
+                </g>
+              )}
+
+              {/* 2. ScaledProfileMeasurer Vector */}
+              {profileLine && (
+                <g>
+                  <line
+                    x1={profileLine.x1}
+                    y1={profileLine.y1}
+                    x2={profileLine.x2}
+                    y2={profileLine.y2}
+                    stroke="#38bdf8"
+                    strokeWidth="2.5"
+                  />
+                  <circle cx={profileLine.x1} cy={profileLine.y1} r="4" fill="#38bdf8" />
+                  <circle cx={profileLine.x2} cy={profileLine.y2} r="4" fill="#38bdf8" />
+                  <text
+                    x={(profileLine.x1 + profileLine.x2) / 2 + 6}
+                    y={(profileLine.y1 + profileLine.y2) / 2 - 6}
+                    fill="#38bdf8"
+                    fontSize="11"
+                    fontFamily="JetBrains Mono"
+                    fontWeight="bold"
+                  >
+                    {(Math.hypot(profileLine.x2 - profileLine.x1, profileLine.y2 - profileLine.y1) * pixelSizeUm).toFixed(1)} µm
+                  </text>
+                </g>
+              )}
+
+              {/* 3. Rectangle ROI */}
+              {rectShape && (
+                <rect
+                  x={Math.min(rectShape.x1, rectShape.x2)}
+                  y={Math.min(rectShape.y1, rectShape.y2)}
+                  width={Math.abs(rectShape.x2 - rectShape.x1)}
+                  height={Math.abs(rectShape.y2 - rectShape.y1)}
+                  fill="rgba(56, 189, 248, 0.15)"
+                  stroke="#38bdf8"
                   strokeWidth="2"
                   strokeDasharray="4 2"
                 />
-                <circle cx={measureLine.x1} cy={measureLine.y1} r="3" fill="#facc15" />
-                <circle cx={measureLine.x2} cy={measureLine.y2} r="3" fill="#facc15" />
-              </svg>
-            )}
+              )}
+
+              {/* 4. Circle ROI */}
+              {circleShape && (
+                <circle
+                  cx={circleShape.x1}
+                  cy={circleShape.y1}
+                  r={Math.hypot(circleShape.x2 - circleShape.x1, circleShape.y2 - circleShape.y1)}
+                  fill="rgba(244, 114, 182, 0.15)"
+                  stroke="#f472b6"
+                  strokeWidth="2"
+                  strokeDasharray="4 2"
+                />
+              )}
+            </svg>
+
+            {/* Segmented Nuclei / Cell Counter Overlays */}
+            {rois && rois.map(roi => (
+              <div
+                key={roi.id}
+                style={{
+                  position: 'absolute',
+                  left: `${roi.x - roi.width / 2}px`,
+                  top: `${roi.y - roi.height / 2}px`,
+                  width: `${roi.width}px`,
+                  height: `${roi.height}px`,
+                  border: '2px dashed #4ade80',
+                  borderRadius: '50%',
+                  pointerEvents: 'none',
+                  boxShadow: '0 0 10px rgba(74, 222, 128, 0.5)'
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '-18px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    fontSize: '10px',
+                    color: '#4ade80',
+                    background: 'rgba(0, 0, 0, 0.85)',
+                    padding: '1px 6px',
+                    borderRadius: '3px',
+                    whiteSpace: 'nowrap',
+                    fontFamily: 'var(--font-mono)'
+                  }}
+                >
+                  {roi.label} ({roi.areaUm2} µm²)
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

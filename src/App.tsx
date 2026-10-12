@@ -1,5 +1,16 @@
-import React, { useState } from 'react';
-import { ViewMode, ActiveTool, Channel, DimensionState, DatasetMetadata } from './types/microscopy';
+import React, { useState, useEffect } from 'react';
+import {
+  ViewMode,
+  ActiveTool,
+  Channel,
+  DimensionState,
+  DatasetMetadata,
+  LineProfilePoint,
+  RoiItem,
+  MeasurementRecord,
+  ProjectionMode,
+  ProcessingFilter
+} from './types/microscopy';
 import { INITIAL_CHANNELS, INITIAL_METADATA } from './services/sampleData';
 import { TopNav } from './components/Header/TopNav';
 import { Viewport } from './components/Viewer/Viewport';
@@ -8,7 +19,13 @@ import { DimensionSliders } from './components/Viewer/DimensionSliders';
 import { ChannelControls } from './components/Sidebar/ChannelControls';
 import { AcquisitionPanel } from './components/Sidebar/AcquisitionPanel';
 import { MetadataPanel } from './components/Sidebar/MetadataPanel';
-import { Layers, Sliders, Info, Eye } from 'lucide-react';
+import { TilesPanel } from './components/Sidebar/TilesPanel';
+import { ProcessingPanel } from './components/Sidebar/ProcessingPanel';
+import { LineProfileDock } from './components/Analysis/LineProfileDock';
+import { CellCounterModal } from './components/Analysis/CellCounterModal';
+import { ColocalizationModal } from './components/Analysis/ColocalizationModal';
+import { MeasurementsTableDock } from './components/Analysis/MeasurementsTableDock';
+import { Layers } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('composite');
@@ -20,12 +37,26 @@ export const App: React.FC = () => {
   const [zoom, setZoom] = useState(1.0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
 
-  const [leftTab, setLeftTab] = useState<'acquisition' | 'metadata'>('acquisition');
+  // Sidebar navigation tab
+  const [leftTab, setLeftTab] = useState<'acquisition' | 'tiles' | 'processing' | 'metadata'>('acquisition');
   const [useRealCzi, setUseRealCzi] = useState(false);
   const [backendOnline, setBackendOnline] = useState(false);
 
+  // Analysis & Advanced Modals
+  const [isCellCounterOpen, setIsCellCounterOpen] = useState(false);
+  const [isColocOpen, setIsColocOpen] = useState(false);
+  const [isMeasurementsTableOpen, setIsMeasurementsTableOpen] = useState(false);
+  const [lineProfileData, setLineProfileData] = useState<LineProfilePoint[]>([]);
+  const [lineProfileLengthUm, setLineProfileLengthUm] = useState<number>(0);
+  const [rois, setRois] = useState<RoiItem[]>([]);
+  const [measurements, setMeasurements] = useState<MeasurementRecord[]>([]);
+
+  // Processing & Projections
+  const [projectionMode, setProjectionMode] = useState<ProjectionMode>('single');
+  const [processingFilter, setProcessingFilter] = useState<ProcessingFilter>('none');
+
   // Check if Python Zeiss server is running on :8080
-  React.useEffect(() => {
+  useEffect(() => {
     fetch('http://localhost:8080/api/status')
       .then(res => res.json())
       .then(data => {
@@ -51,10 +82,81 @@ export const App: React.FC = () => {
     tile: {
       currentX: 0,
       currentY: 0,
-      totalTilesX: 1,
-      totalTilesY: 1
+      totalTilesX: 3,
+      totalTilesY: 3
     }
   });
+
+  // Time-Series Playback Loop
+  useEffect(() => {
+    if (!dimensions.time.isPlaying) return;
+
+    const timer = setInterval(() => {
+      setDimensions(prev => ({
+        ...prev,
+        time: {
+          ...prev.time,
+          current: (prev.time.current + 1) % prev.time.total
+        }
+      }));
+    }, 1200);
+
+    return () => clearInterval(timer);
+  }, [dimensions.time.isPlaying]);
+
+  // Publication Snapshot Export
+  const handleExportSnapshot = () => {
+    const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+    if (!canvas) return;
+
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = canvas.width;
+    exportCanvas.height = canvas.height;
+    const ctx = exportCanvas.getContext('2d');
+    if (!ctx) return;
+
+    // Draw main image
+    ctx.drawImage(canvas, 0, 0);
+
+    // Draw calibrated scale bar watermark
+    const pixelSizeUm = metadata.voxelSizeUm.x;
+    const barUm = 20;
+    const barPx = Math.round(barUm / pixelSizeUm);
+    const barX = 24;
+    const barY = exportCanvas.height - 24;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(barX, barY - 4, barPx, 4);
+    ctx.font = 'bold 12px "JetBrains Mono", monospace';
+    ctx.fillText(`${barUm} µm`, barX + barPx / 2 - 16, barY - 10);
+
+    // Draw scientific metadata stamp
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    ctx.fillRect(exportCanvas.width - 240, exportCanvas.height - 36, 230, 28);
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '10px "JetBrains Mono", monospace';
+    ctx.fillText(`ZENITH BIO-IMAGING | ${metadata.objective.split(' ')[0]}`, exportCanvas.width - 230, exportCanvas.height - 18);
+
+    const link = document.createElement('a');
+    link.download = `zenith_${Date.now()}_publication.png`;
+    link.href = exportCanvas.toDataURL('image/png');
+    link.click();
+  };
+
+  const handleApplyRoisFromCellCounter = (newRois: RoiItem[]) => {
+    setRois(newRois);
+    // Convert segmented cells to measurement records
+    const newRecords: MeasurementRecord[] = newRois.map(r => ({
+      id: r.id,
+      type: 'circle',
+      label: r.label,
+      areaUm2: r.areaUm2,
+      meanIntensity: r.meanValues['ch-dapi'] || 160,
+      timestamp: new Date().toLocaleTimeString()
+    }));
+    setMeasurements(prev => [...newRecords, ...prev]);
+    setIsMeasurementsTableOpen(true);
+  };
 
   return (
     <div className="app-container">
@@ -72,20 +174,40 @@ export const App: React.FC = () => {
 
       {/* 2. Main Workstation Area */}
       <main className="main-workspace">
-        {/* Left Sidebar: Experiment Acquisition & Metadata */}
+        {/* Left Sidebar: Experiment Acquisition, Tiles, Processing, & Metadata */}
         <aside className="left-sidebar">
-          <div className="sidebar-tabs">
+          <div className="sidebar-tabs" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
             <button
               className={`sidebar-tab-btn ${leftTab === 'acquisition' ? 'active' : ''}`}
               onClick={() => setLeftTab('acquisition')}
+              title="Acquisition Hardware Setup"
+              style={{ padding: '8px 2px', fontSize: '0.7rem' }}
             >
-              Acquisition Setup
+              Acquire
+            </button>
+            <button
+              className={`sidebar-tab-btn ${leftTab === 'tiles' ? 'active' : ''}`}
+              onClick={() => setLeftTab('tiles')}
+              title="Tile Region & Stage Mosaic"
+              style={{ padding: '8px 2px', fontSize: '0.7rem' }}
+            >
+              Tiles
+            </button>
+            <button
+              className={`sidebar-tab-btn ${leftTab === 'processing' ? 'active' : ''}`}
+              onClick={() => setLeftTab('processing')}
+              title="Z-Stack Projections & Convolutions"
+              style={{ padding: '8px 2px', fontSize: '0.7rem' }}
+            >
+              Process
             </button>
             <button
               className={`sidebar-tab-btn ${leftTab === 'metadata' ? 'active' : ''}`}
               onClick={() => setLeftTab('metadata')}
+              title="Microscope Hardware Calibration"
+              style={{ padding: '8px 2px', fontSize: '0.7rem' }}
             >
-              Info & Calibration
+              Info
             </button>
           </div>
 
@@ -94,6 +216,15 @@ export const App: React.FC = () => {
               <AcquisitionPanel
                 metadata={metadata}
                 onUpdateMetadata={updates => setMetadata(prev => ({ ...prev, ...updates }))}
+              />
+            )}
+            {leftTab === 'tiles' && <TilesPanel stageX={12.4} stageY={-8.4} />}
+            {leftTab === 'processing' && (
+              <ProcessingPanel
+                projectionMode={projectionMode}
+                setProjectionMode={setProjectionMode}
+                processingFilter={processingFilter}
+                setProcessingFilter={setProcessingFilter}
               />
             )}
             {leftTab === 'metadata' && <MetadataPanel metadata={metadata} />}
@@ -109,6 +240,11 @@ export const App: React.FC = () => {
             zoom={zoom}
             setZoom={setZoom}
             setPan={setPan}
+            onOpenCellCounter={() => setIsCellCounterOpen(true)}
+            onOpenColocalization={() => setIsColocOpen(true)}
+            onExportSnapshot={handleExportSnapshot}
+            onToggleMeasurementsTable={() => setIsMeasurementsTableOpen(prev => !prev)}
+            measurementsCount={measurements.length}
           />
 
           {/* Interactive Multi-Channel Viewport */}
@@ -116,6 +252,8 @@ export const App: React.FC = () => {
             channels={channels}
             viewMode={viewMode}
             activeTool={activeTool}
+            projectionMode={projectionMode}
+            processingFilter={processingFilter}
             currentZ={dimensions.z.current}
             totalZ={dimensions.z.total}
             currentTime={dimensions.time.current}
@@ -125,6 +263,15 @@ export const App: React.FC = () => {
             pan={pan}
             setPan={setPan}
             useRealCzi={useRealCzi}
+            onProfileDataUpdate={(data, len) => {
+              setLineProfileData(data);
+              setLineProfileLengthUm(len);
+            }}
+            rois={rois}
+            onAddMeasurement={m => {
+              setMeasurements(prev => [m, ...prev]);
+              setIsMeasurementsTableOpen(true);
+            }}
           />
 
           {/* Bottom Dock: Z-Stack & Time-Series Timeline Sliders */}
@@ -132,6 +279,30 @@ export const App: React.FC = () => {
             dimensions={dimensions}
             setDimensions={setDimensions}
           />
+
+          {/* Dockable Line Intensity Profile Window */}
+          {lineProfileData.length > 0 && (
+            <LineProfileDock
+              data={lineProfileData}
+              channels={channels}
+              totalLengthUm={lineProfileLengthUm}
+              bottomOffset={isMeasurementsTableOpen && measurements.length > 0 ? 330 : 80}
+              onClose={() => setLineProfileData([])}
+            />
+          )}
+
+          {/* Dockable Morphometry & Measurements Table */}
+          {isMeasurementsTableOpen && measurements.length > 0 && (
+            <MeasurementsTableDock
+              measurements={measurements}
+              onDeleteMeasurement={id => setMeasurements(prev => prev.filter(m => m.id !== id))}
+              onClearAll={() => {
+                setMeasurements([]);
+                setRois([]);
+              }}
+              onClose={() => setIsMeasurementsTableOpen(false)}
+            />
+          )}
         </section>
 
         {/* Right Sidebar: Fluorescence Channels, LUT, Histogram & Intensity Range */}
@@ -163,10 +334,33 @@ export const App: React.FC = () => {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <span>Objective: {metadata.objective.split(' ')[0]}</span>
+          <span style={{ color: projectionMode !== 'single' ? '#38bdf8' : 'inherit' }}>
+            Z-Mode: {projectionMode.toUpperCase()}
+          </span>
+          <span style={{ color: processingFilter !== 'none' ? '#a855f7' : 'inherit' }}>
+            Filter: {processingFilter.toUpperCase()}
+          </span>
           <span>GPU WebGL: Accelerated</span>
           <span style={{ color: '#22c55e' }}>60 FPS</span>
         </div>
       </footer>
+
+      {/* 4. Analysis Modals */}
+      {isCellCounterOpen && (
+        <CellCounterModal
+          onClose={() => setIsCellCounterOpen(false)}
+          onApplyRois={handleApplyRoisFromCellCounter}
+          channels={channels}
+          pixelSizeUm={metadata.voxelSizeUm.x}
+        />
+      )}
+
+      {isColocOpen && (
+        <ColocalizationModal
+          onClose={() => setIsColocOpen(false)}
+          channels={channels}
+        />
+      )}
     </div>
   );
 };

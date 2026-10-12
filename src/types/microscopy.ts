@@ -1,5 +1,7 @@
 export type ViewMode = 'composite' | 'split' | 'ortho3d' | 'gallery';
-export type ActiveTool = 'pan' | 'zoom' | 'crosshair' | 'measure' | 'roi';
+export type ActiveTool = 'pan' | 'zoom' | 'crosshair' | 'measure' | 'profile' | 'rect_roi' | 'circle_roi';
+export type ProjectionMode = 'single' | 'mip' | 'average';
+export type ProcessingFilter = 'none' | 'gaussian' | 'unsharp' | 'median' | 'sobel' | 'range_indicator';
 
 export interface Channel {
   id: string;
@@ -60,4 +62,38 @@ export interface DatasetMetadata {
     z: number;
   };
   acquisitionDate: string;
+}
+
+export interface LineProfilePoint {
+  distanceUm: number;
+  intensities: { [chId: string]: number };
+}
+
+export interface RoiItem {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  areaUm2: number;
+  meanValues: { [chId: string]: number };
+}
+
+export interface MeasurementRecord {
+  id: string;
+  type: 'line' | 'rect' | 'circle';
+  label: string;
+  lengthUm?: number;
+  areaUm2?: number;
+  perimeterUm?: number;
+  meanIntensity: number;
+  timestamp: string;
+}
+
+export interface TileConfig {
+  rows: number;
+  cols: number;
+  overlapPercent: number;
+  pattern: 'snake' | 'comb';
 }
