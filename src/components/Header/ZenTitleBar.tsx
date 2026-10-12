@@ -8,6 +8,7 @@ interface ZenTitleBarProps {
   onOpenSpectralUnmixing?: () => void;
   onOpenCellCounter?: () => void;
   onOpenColoc?: () => void;
+  onOpenCameraManager?: () => void;
 }
 
 export const ZenTitleBar: React.FC<ZenTitleBarProps> = ({
@@ -16,7 +17,8 @@ export const ZenTitleBar: React.FC<ZenTitleBarProps> = ({
   onOpenDeconv,
   onOpenSpectralUnmixing,
   onOpenCellCounter,
-  onOpenColoc
+  onOpenColoc,
+  onOpenCameraManager
 }) => {
   return (
     <div className="zen-titlebar">
@@ -42,7 +44,7 @@ export const ZenTitleBar: React.FC<ZenTitleBarProps> = ({
         <span className="zen-menu-item" onClick={onOpenDeconv} title="Open 3D Richardson-Lucy Deconvolution">Processing</span>
         <span className="zen-menu-item" onClick={onOpenCellCounter} title="Open Automated Cell Counter & Segmentation">Analysis</span>
         <span className="zen-menu-item" onClick={onOpenSpectralUnmixing} title="Open Spectral Linear Unmixing">Macro</span>
-        <span className="zen-menu-item">Tools</span>
+        <span className="zen-menu-item" onClick={onOpenCameraManager} title="Open Camera Device Manager & Hardware Setup">Tools</span>
         <span className="zen-menu-item">Window</span>
         <span className="zen-menu-item">Help</span>
       </div>

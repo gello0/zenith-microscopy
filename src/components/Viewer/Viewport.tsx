@@ -31,6 +31,9 @@ interface ViewportProps {
   onProfileDataUpdate?: (data: LineProfilePoint[], totalLengthUm: number) => void;
   rois?: RoiItem[];
   onAddMeasurement?: (m: MeasurementRecord) => void;
+  cameraStream?: MediaStream | null;
+  isLive?: boolean;
+  cameraColorMode?: 'color' | 'mono';
 }
 
 export const Viewport: React.FC<ViewportProps> = ({
@@ -50,7 +53,10 @@ export const Viewport: React.FC<ViewportProps> = ({
   useRealCzi = false,
   onProfileDataUpdate,
   rois = [],
-  onAddMeasurement
+  onAddMeasurement,
+  cameraStream = null,
+  isLive = false,
+  cameraColorMode = 'mono'
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -183,6 +189,7 @@ export const Viewport: React.FC<ViewportProps> = ({
 
   // Main Canvas Compositing with spatial filters and range indicator
   useEffect(() => {
+    if (cameraStream && isLive) return; // Live camera stream rendering active
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -322,7 +329,54 @@ export const Viewport: React.FC<ViewportProps> = ({
     }
 
     ctx.putImageData(imgData, 0, 0);
-  }, [channels, rawBuffers, width, height, processingFilter]);
+  }, [channels, rawBuffers, width, height, processingFilter, cameraStream, isLive]);
+
+  // Real-time live camera stream renderer (Plug & Play USB Microscopes / GenICam / sCMOS)
+  useEffect(() => {
+    if (!cameraStream || !isLive) return;
+
+    const video = document.createElement('video');
+    video.srcObject = cameraStream;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    video.play().catch(() => {});
+
+    let animId: number;
+    const renderLiveCam = () => {
+      const canvas = canvasRef.current;
+      if (canvas && video.readyState >= 2) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(video, 0, 0, width, height);
+
+          // Apply monochrome transformation if grayscale selected
+          if (cameraColorMode === 'mono') {
+            const imgData = ctx.getImageData(0, 0, width, height);
+            const d = imgData.data;
+            for (let i = 0; i < d.length; i += 4) {
+              const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+              d[i] = gray;
+              d[i + 1] = gray;
+              d[i + 2] = gray;
+            }
+            ctx.putImageData(imgData, 0, 0);
+          }
+        }
+      }
+      animId = requestAnimationFrame(renderLiveCam);
+    };
+
+    animId = requestAnimationFrame(renderLiveCam);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      video.pause();
+      video.srcObject = null;
+    };
+  }, [cameraStream, isLive, width, height, cameraColorMode]);
 
   // Sampling helper for line intensity profile
   const sampleProfileVector = (line: { x1: number; y1: number; x2: number; y2: number }) => {

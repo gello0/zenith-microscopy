@@ -77,6 +77,22 @@ class ZenithAPIHandler(BaseHTTPRequestHandler):
             }
             self.wfile.write(json.dumps(resp).encode())
 
+        elif parsed.path == "/api/camera/devices":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._send_cors_headers()
+            self.end_headers()
+            resp = {
+                "devices": [
+                    {"id": "virtual-axiocam", "label": "ZEISS Axiocam 702 mono", "type": "virtual"},
+                    {"id": "directshow-0", "label": "USB Video Device (DirectShow / UVC)", "type": "uvc_usb"},
+                    {"id": "genicam-0", "label": "GenICam USB3 Vision / GigE Vision", "type": "genicam"},
+                    {"id": "mmcore-0", "label": "Micro-Manager Core (MMC_Core)", "type": "micromanager"}
+                ],
+                "active": "virtual-axiocam"
+            }
+            self.wfile.write(json.dumps(resp).encode())
+
         elif parsed.path == "/api/czi/info":
             czi_file = params.get("path", [DEFAULT_CZI_PATH])[0]
             if not os.path.exists(czi_file):

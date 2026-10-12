@@ -30,6 +30,7 @@ import { MeasurementsTableDock } from './components/Analysis/MeasurementsTableDo
 import { DeconvolutionModal } from './components/Analysis/DeconvolutionModal';
 import { SpectralUnmixingModal } from './components/Analysis/SpectralUnmixingModal';
 import { StageNavigatorModal } from './components/Sidebar/StageNavigatorModal';
+import { CameraManagerModal, CameraDeviceConfig } from './components/Sidebar/CameraManagerModal';
 import { Layers, CheckCircle2 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -60,6 +61,21 @@ export const App: React.FC = () => {
   const [isSpectralUnmixingOpen, setIsSpectralUnmixingOpen] = useState(false);
   const [isStageNavOpen, setIsStageNavOpen] = useState(false);
   const [stagePos, setStagePos] = useState({ x: 12.4, y: -8.4 });
+
+  // Camera Hardware Configuration & Stream State
+  const [isCameraManagerOpen, setIsCameraManagerOpen] = useState(false);
+  const [activeCameraConfig, setActiveCameraConfig] = useState<CameraDeviceConfig>({
+    deviceId: 'virtual-axiocam',
+    label: 'Axiocam 702 mono',
+    type: 'virtual',
+    resolution: { width: 1920, height: 1080 },
+    frameRate: 30,
+    exposureMs: 100,
+    gain: 2.0,
+    binning: '1x1',
+    mode: 'mono'
+  });
+  const [activeCameraStream, setActiveCameraStream] = useState<MediaStream | null>(null);
 
   const [lineProfileData, setLineProfileData] = useState<LineProfilePoint[]>([]);
   const [lineProfileLengthUm, setLineProfileLengthUm] = useState<number>(0);
@@ -249,6 +265,7 @@ export const App: React.FC = () => {
         onOpenSpectralUnmixing={() => setIsSpectralUnmixingOpen(true)}
         onOpenCellCounter={() => setIsCellCounterOpen(true)}
         onOpenColoc={() => setIsColocOpen(true)}
+        onOpenCameraManager={() => setIsCameraManagerOpen(true)}
       />
 
       {/* 2. Official ZEISS Action Bar (Locate, Acquisition, Processing & Triggers) */}
@@ -264,6 +281,8 @@ export const App: React.FC = () => {
         backendOnline={backendOnline}
         activeWorkflow={activeWorkflow}
         setActiveWorkflow={handleWorkflowChange}
+        cameraName={activeCameraConfig.label}
+        onOpenCameraManager={() => setIsCameraManagerOpen(true)}
       />
 
       {/* Floating Scientific Toast Notification */}
@@ -310,6 +329,7 @@ export const App: React.FC = () => {
             onOpenNavigator={() => setIsStageNavOpen(true)}
             onOpenDeconvolution={() => setIsDeconvOpen(true)}
             onOpenSpectralUnmixing={() => setIsSpectralUnmixingOpen(true)}
+            onOpenCameraManager={() => setIsCameraManagerOpen(true)}
           />
         </aside>
 
@@ -384,6 +404,9 @@ export const App: React.FC = () => {
             pan={pan}
             setPan={setPan}
             useRealCzi={useRealCzi}
+            cameraStream={activeCameraStream}
+            isLive={isLive}
+            cameraColorMode={activeCameraConfig.mode}
             onProfileDataUpdate={(data, len) => {
               setLineProfileData(data);
               setLineProfileLengthUm(len);
@@ -519,6 +542,24 @@ export const App: React.FC = () => {
             setToastMessage('Spectral Crosstalk Matrix Inverted — Channels Unmixed');
             setTimeout(() => setToastMessage(null), 3500);
           }}
+        />
+      )}
+
+      {isCameraManagerOpen && (
+        <CameraManagerModal
+          isOpen={isCameraManagerOpen}
+          onClose={() => setIsCameraManagerOpen(false)}
+          activeConfig={activeCameraConfig}
+          onApplyConfig={(newConfig, stream) => {
+            setActiveCameraConfig(newConfig);
+            setActiveCameraStream(stream);
+            if (newConfig.deviceId !== 'virtual-axiocam' && stream) {
+              setIsLive(true);
+            }
+            showToast(`📹 Connected to ${newConfig.label} (${newConfig.resolution.width}×${newConfig.resolution.height})`);
+          }}
+          isLive={isLive}
+          setIsLive={setIsLive}
         />
       )}
     </div>

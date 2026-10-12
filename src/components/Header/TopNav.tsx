@@ -13,6 +13,8 @@ interface TopNavProps {
   backendOnline: boolean;
   activeWorkflow: 'locate' | 'acquisition' | 'processing';
   setActiveWorkflow: (w: 'locate' | 'acquisition' | 'processing') => void;
+  cameraName?: string;
+  onOpenCameraManager?: () => void;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -26,7 +28,9 @@ export const TopNav: React.FC<TopNavProps> = ({
   setUseRealCzi,
   backendOnline,
   activeWorkflow,
-  setActiveWorkflow
+  setActiveWorkflow,
+  cameraName,
+  onOpenCameraManager
 }) => {
   return (
     <div className="zen-action-bar">
@@ -88,6 +92,19 @@ export const TopNav: React.FC<TopNavProps> = ({
 
       {/* 3. Right: ZEISS Primary Hardware Acquisition Triggers */}
       <div className="zen-action-triggers">
+        {/* Camera Device Selector / Setup Trigger */}
+        <button
+          className="zen-trigger-btn"
+          onClick={onOpenCameraManager}
+          title="Open Camera Device Manager (Connect USB Microscopes, GenICam, sCMOS)"
+          style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px' }}
+        >
+          <Camera size={13} color="#007acc" />
+          <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {cameraName || 'Axiocam 702 mono'}
+          </span>
+        </button>
+
         {/* Live Button (Exact Zeiss Live Button with green LED) */}
         <button
           className={`zen-trigger-btn live ${isLive ? 'active' : ''}`}

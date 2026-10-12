@@ -8,7 +8,8 @@ import {
   Info,
   Compass,
   Sliders,
-  Sparkles
+  Sparkles,
+  Camera
 } from 'lucide-react';
 import { DatasetMetadata, ProjectionMode, ProcessingFilter } from '../../types/microscopy';
 import { AcquisitionPanel } from './AcquisitionPanel';
@@ -29,6 +30,7 @@ interface ZenToolTreeProps {
   onOpenNavigator?: () => void;
   onOpenDeconvolution?: () => void;
   onOpenSpectralUnmixing?: () => void;
+  onOpenCameraManager?: () => void;
   activeFilterTab?: string;
 }
 
@@ -43,7 +45,8 @@ export const ZenToolTree: React.FC<ZenToolTreeProps> = ({
   stageY = -8.4,
   onOpenNavigator,
   onOpenDeconvolution,
-  onOpenSpectralUnmixing
+  onOpenSpectralUnmixing,
+  onOpenCameraManager
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'acquire' | 'focus' | 'tiles' | 'process' | 'info'>('all');
 
@@ -130,6 +133,30 @@ export const ZenToolTree: React.FC<ZenToolTreeProps> = ({
             </div>
             {openSections.acquisition && (
               <div className="zen-accordion-body">
+                {onOpenCameraManager && (
+                  <button
+                    onClick={onOpenCameraManager}
+                    style={{
+                      width: '100%',
+                      marginBottom: '8px',
+                      padding: '6px 10px',
+                      background: 'rgba(0, 122, 204, 0.15)',
+                      border: '1px solid rgba(0, 122, 204, 0.4)',
+                      color: '#38bdf8',
+                      borderRadius: '3px',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <Camera size={13} />
+                    Camera Device Manager (Plug & Play HAL)
+                  </button>
+                )}
                 <AcquisitionPanel metadata={metadata} onUpdateMetadata={onUpdateMetadata} />
               </div>
             )}
