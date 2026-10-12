@@ -1,22 +1,50 @@
 import React from 'react';
 import { ProjectionMode, ProcessingFilter } from '../../types/microscopy';
-import { Wand2, Layers, Sliders, Eye, Sparkles, AlertTriangle } from 'lucide-react';
+import { Wand2, Layers, Sliders, Eye, Sparkles, AlertTriangle, Zap } from 'lucide-react';
 
 interface ProcessingPanelProps {
   projectionMode: ProjectionMode;
   setProjectionMode: (mode: ProjectionMode) => void;
   processingFilter: ProcessingFilter;
   setProcessingFilter: (filter: ProcessingFilter) => void;
+  onOpenDeconvolution?: () => void;
+  onOpenSpectralUnmixing?: () => void;
 }
 
 export const ProcessingPanel: React.FC<ProcessingPanelProps> = ({
   projectionMode,
   setProjectionMode,
   processingFilter,
-  setProcessingFilter
+  setProcessingFilter,
+  onOpenDeconvolution,
+  onOpenSpectralUnmixing
 }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {/* Quick Launchers: 3D Deconvolution & Linear Unmixing */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+        {onOpenDeconvolution && (
+          <button
+            className="zen-btn-mini"
+            style={{ height: '28px', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid #38bdf8', color: '#38bdf8', fontWeight: 600, justifyContent: 'center', gap: '4px' }}
+            onClick={onOpenDeconvolution}
+          >
+            <Sparkles size={12} />
+            <span>3D Deconvolution</span>
+          </button>
+        )}
+        {onOpenSpectralUnmixing && (
+          <button
+            className="zen-btn-mini"
+            style={{ height: '28px', background: 'rgba(168, 85, 247, 0.1)', border: '1px solid #a855f7', color: '#c084fc', fontWeight: 600, justifyContent: 'center', gap: '4px' }}
+            onClick={onOpenSpectralUnmixing}
+          >
+            <Zap size={12} />
+            <span>Linear Unmixing</span>
+          </button>
+        )}
+      </div>
+
       {/* 1. Z-Stack Projections */}
       <div>
         <div className="section-title">

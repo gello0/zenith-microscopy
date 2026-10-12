@@ -18,6 +18,7 @@ import { Viewport } from './components/Viewer/Viewport';
 import { ToolBar } from './components/Viewer/ToolBar';
 import { DimensionSliders } from './components/Viewer/DimensionSliders';
 import { ChannelControls } from './components/Sidebar/ChannelControls';
+import { ZenToolTree } from './components/Sidebar/ZenToolTree';
 import { AcquisitionPanel } from './components/Sidebar/AcquisitionPanel';
 import { MetadataPanel } from './components/Sidebar/MetadataPanel';
 import { TilesPanel } from './components/Sidebar/TilesPanel';
@@ -26,6 +27,9 @@ import { LineProfileDock } from './components/Analysis/LineProfileDock';
 import { CellCounterModal } from './components/Analysis/CellCounterModal';
 import { ColocalizationModal } from './components/Analysis/ColocalizationModal';
 import { MeasurementsTableDock } from './components/Analysis/MeasurementsTableDock';
+import { DeconvolutionModal } from './components/Analysis/DeconvolutionModal';
+import { SpectralUnmixingModal } from './components/Analysis/SpectralUnmixingModal';
+import { StageNavigatorModal } from './components/Sidebar/StageNavigatorModal';
 import { Layers, CheckCircle2 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -52,6 +56,11 @@ export const App: React.FC = () => {
   const [isCellCounterOpen, setIsCellCounterOpen] = useState(false);
   const [isColocOpen, setIsColocOpen] = useState(false);
   const [isMeasurementsTableOpen, setIsMeasurementsTableOpen] = useState(false);
+  const [isDeconvOpen, setIsDeconvOpen] = useState(false);
+  const [isSpectralUnmixingOpen, setIsSpectralUnmixingOpen] = useState(false);
+  const [isStageNavOpen, setIsStageNavOpen] = useState(false);
+  const [stagePos, setStagePos] = useState({ x: 12.4, y: -8.4 });
+
   const [lineProfileData, setLineProfileData] = useState<LineProfilePoint[]>([]);
   const [lineProfileLengthUm, setLineProfileLengthUm] = useState<number>(0);
   const [rois, setRois] = useState<RoiItem[]>([]);
@@ -233,7 +242,14 @@ export const App: React.FC = () => {
   return (
     <div className="app-container">
       {/* 1. Official ZEISS Window Titlebar & Menu Bar */}
-      <ZenTitleBar datasetName={currentDatasetName} />
+      <ZenTitleBar
+        datasetName={currentDatasetName}
+        onOpenStageNav={() => setIsStageNavOpen(true)}
+        onOpenDeconv={() => setIsDeconvOpen(true)}
+        onOpenSpectralUnmixing={() => setIsSpectralUnmixingOpen(true)}
+        onOpenCellCounter={() => setIsCellCounterOpen(true)}
+        onOpenColoc={() => setIsColocOpen(true)}
+      />
 
       {/* 2. Official ZEISS Action Bar (Locate, Acquisition, Processing & Triggers) */}
       <TopNav
@@ -282,55 +298,19 @@ export const App: React.FC = () => {
       <main className="main-workspace">
         {/* Left Sidebar: Tool Tree (Experiment Manager, Channels, Z-Stack, Tiles) */}
         <aside className="left-sidebar">
-          <div className="sidebar-tabs" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
-            <button
-              className={`sidebar-tab-btn ${leftTab === 'acquisition' ? 'active' : ''}`}
-              onClick={() => setLeftTab('acquisition')}
-              title="Acquisition Hardware Setup"
-            >
-              Acquire
-            </button>
-            <button
-              className={`sidebar-tab-btn ${leftTab === 'tiles' ? 'active' : ''}`}
-              onClick={() => setLeftTab('tiles')}
-              title="Tile Region & Stage Mosaic"
-            >
-              Tiles
-            </button>
-            <button
-              className={`sidebar-tab-btn ${leftTab === 'processing' ? 'active' : ''}`}
-              onClick={() => setLeftTab('processing')}
-              title="Z-Stack Projections & Convolutions"
-            >
-              Process
-            </button>
-            <button
-              className={`sidebar-tab-btn ${leftTab === 'metadata' ? 'active' : ''}`}
-              onClick={() => setLeftTab('metadata')}
-              title="Microscope Hardware Calibration"
-            >
-              Info
-            </button>
-          </div>
-
-          <div className="sidebar-content">
-            {leftTab === 'acquisition' && (
-              <AcquisitionPanel
-                metadata={metadata}
-                onUpdateMetadata={updates => setMetadata(prev => ({ ...prev, ...updates }))}
-              />
-            )}
-            {leftTab === 'tiles' && <TilesPanel stageX={12.4} stageY={-8.4} />}
-            {leftTab === 'processing' && (
-              <ProcessingPanel
-                projectionMode={projectionMode}
-                setProjectionMode={setProjectionMode}
-                processingFilter={processingFilter}
-                setProcessingFilter={setProcessingFilter}
-              />
-            )}
-            {leftTab === 'metadata' && <MetadataPanel metadata={metadata} />}
-          </div>
+          <ZenToolTree
+            metadata={metadata}
+            onUpdateMetadata={updates => setMetadata(prev => ({ ...prev, ...updates }))}
+            projectionMode={projectionMode}
+            setProjectionMode={setProjectionMode}
+            processingFilter={processingFilter}
+            setProcessingFilter={setProcessingFilter}
+            stageX={stagePos.x}
+            stageY={stagePos.y}
+            onOpenNavigator={() => setIsStageNavOpen(true)}
+            onOpenDeconvolution={() => setIsDeconvOpen(true)}
+            onOpenSpectralUnmixing={() => setIsSpectralUnmixingOpen(true)}
+          />
         </aside>
 
         {/* Center Stage: Document Tabs, View Modes, Image Toolbar, Viewport & Dimensions */}
@@ -486,7 +466,7 @@ export const App: React.FC = () => {
         </div>
       </footer>
 
-      {/* 5. Analysis Modals */}
+      {/* 5. Analysis & Processing Modals */}
       {isCellCounterOpen && (
         <CellCounterModal
           onClose={() => setIsCellCounterOpen(false)}
@@ -500,6 +480,45 @@ export const App: React.FC = () => {
         <ColocalizationModal
           onClose={() => setIsColocOpen(false)}
           channels={channels}
+        />
+      )}
+
+      {isStageNavOpen && (
+        <StageNavigatorModal
+          isOpen={isStageNavOpen}
+          onClose={() => setIsStageNavOpen(false)}
+          currentX={stagePos.x}
+          currentY={stagePos.y}
+          onMoveStage={(x, y) => {
+            setStagePos({ x, y });
+            setToastMessage(`Stage Motor Stepped to X: ${x} mm, Y: ${y} mm`);
+            setTimeout(() => setToastMessage(null), 3000);
+          }}
+        />
+      )}
+
+      {isDeconvOpen && (
+        <DeconvolutionModal
+          isOpen={isDeconvOpen}
+          onClose={() => setIsDeconvOpen(false)}
+          channels={channels}
+          onApplyDeconvolution={(chId, iters) => {
+            setProcessingFilter('richardson_lucy');
+            setToastMessage(`Richardson-Lucy (${iters} iterations) applied to ${chId}`);
+            setTimeout(() => setToastMessage(null), 3500);
+          }}
+        />
+      )}
+
+      {isSpectralUnmixingOpen && (
+        <SpectralUnmixingModal
+          isOpen={isSpectralUnmixingOpen}
+          onClose={() => setIsSpectralUnmixingOpen(false)}
+          channels={channels}
+          onApplyUnmixing={matrix => {
+            setToastMessage('Spectral Crosstalk Matrix Inverted — Channels Unmixed');
+            setTimeout(() => setToastMessage(null), 3500);
+          }}
         />
       )}
     </div>

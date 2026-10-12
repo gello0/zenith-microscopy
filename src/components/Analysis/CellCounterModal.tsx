@@ -15,10 +15,11 @@ export const CellCounterModal: React.FC<CellCounterModalProps> = ({
   channels,
   pixelSizeUm
 }) => {
-  const [method, setMethod] = useState<'otsu' | 'triangle' | 'threesigma'>('otsu');
+  const [method, setMethod] = useState<'otsu' | 'triangle' | 'threesigma' | 'zeiss_aic'>('zeiss_aic');
   const [minSizeUm2, setMinSizeUm2] = useState<number>(15);
   const [maxSizeUm2, setMaxSizeUm2] = useState<number>(300);
   const [targetChannelId, setTargetChannelId] = useState<string>('ch-dapi');
+  const [aiConfidence, setAiConfidence] = useState<number>(0.75);
 
   // Simulated segmentation results based on the authentic cellular coordinates
   const simulatedCells: RoiItem[] = [
@@ -122,31 +123,71 @@ export const CellCounterModal: React.FC<CellCounterModalProps> = ({
           {/* Algorithm Selection (Reversed from ZEISS Analyzing.dll) */}
           <div>
             <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
-              Thresholding Strategy (ZEN Strategy Strategy2D)
+              Segmentation Strategy (ZEN Analyzing & Deep Learning)
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+              <button
+                className={`sidebar-tab-btn ${method === 'zeiss_aic' ? 'active' : ''}`}
+                onClick={() => setMethod('zeiss_aic')}
+                style={{ fontSize: '0.72rem', color: method === 'zeiss_aic' ? '#38bdf8' : undefined }}
+              >
+                ZEISS AIC (AI)
+              </button>
               <button
                 className={`sidebar-tab-btn ${method === 'otsu' ? 'active' : ''}`}
                 onClick={() => setMethod('otsu')}
-                style={{ fontSize: '0.74rem' }}
+                style={{ fontSize: '0.72rem' }}
               >
-                Otsu (Variance)
+                Otsu
               </button>
               <button
                 className={`sidebar-tab-btn ${method === 'triangle' ? 'active' : ''}`}
                 onClick={() => setMethod('triangle')}
-                style={{ fontSize: '0.74rem' }}
+                style={{ fontSize: '0.72rem' }}
               >
-                Triangle (Zack)
+                Triangle
               </button>
               <button
                 className={`sidebar-tab-btn ${method === 'threesigma' ? 'active' : ''}`}
                 onClick={() => setMethod('threesigma')}
-                style={{ fontSize: '0.74rem' }}
+                style={{ fontSize: '0.72rem' }}
               >
-                3-Sigma Noise
+                3-Sigma
               </button>
             </div>
+            {method === 'zeiss_aic' && (
+              <div
+                style={{
+                  marginTop: '8px',
+                  padding: '8px 10px',
+                  background: 'rgba(56, 189, 248, 0.06)',
+                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: 600 }}>
+                    Model: nucleus_segmentation_grayscale_v4.czann (73 MB)
+                  </span>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                    Prob: {(aiConfidence * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={0.95}
+                  step={0.05}
+                  value={aiConfidence}
+                  onChange={e => setAiConfidence(Number(e.target.value))}
+                  className="dimension-slider"
+                  style={{ height: '4px' }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Target Channel */}

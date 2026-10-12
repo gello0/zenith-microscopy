@@ -441,6 +441,58 @@ body {
   margin-bottom: 6px;
 }
 
+/* ZEISS Collapsible Tool Accordion Tree */
+.zen-accordion-group {
+  border: 1px solid var(--zen-border-medium);
+  background-color: var(--zen-bg-main);
+  border-radius: var(--radius-zen-sm);
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.zen-accordion-header {
+  height: 27px;
+  background-color: var(--zen-bg-surface);
+  border-bottom: 1px solid var(--zen-border-subtle);
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.1s ease;
+}
+
+.zen-accordion-header:hover {
+  background-color: var(--zen-bg-hover);
+}
+
+.zen-accordion-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--zen-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.zen-accordion-badge {
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background-color: var(--zen-bg-input);
+  border: 1px solid var(--zen-border-subtle);
+  color: var(--zen-text-muted);
+  font-family: var(--font-mono);
+}
+
+.zen-accordion-body {
+  padding: 8px;
+  background-color: #212123;
+}
+
 /* ==========================================================================
    4. CENTER VIEWPORT: DOCUMENT TABS, VIEW MODES & TOOLBAR
    ========================================================================== */

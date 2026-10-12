@@ -5,9 +5,10 @@ import { Grid, Move, Play, RefreshCw, Compass } from 'lucide-react';
 interface TilesPanelProps {
   stageX: number;
   stageY: number;
+  onOpenNavigator?: () => void;
 }
 
-export const TilesPanel: React.FC<TilesPanelProps> = ({ stageX, stageY }) => {
+export const TilesPanel: React.FC<TilesPanelProps> = ({ stageX, stageY, onOpenNavigator }) => {
   const [cols, setCols] = useState(3);
   const [rows, setRows] = useState(3);
   const [overlap, setOverlap] = useState(10);
@@ -130,13 +131,24 @@ export const TilesPanel: React.FC<TilesPanelProps> = ({ stageX, stageY }) => {
 
       {/* Live Stage Position Coordinates */}
       <div style={{ padding: '8px 10px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-          <Compass size={13} color="#f59e0b" />
-          <span>Motorized Stage Position (MTB HAL)</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Compass size={13} color="#f59e0b" />
+            <span>Motorized Stage Position (MTB HAL)</span>
+          </div>
+          {onOpenNavigator && (
+            <button
+              className="zen-btn-mini"
+              style={{ fontSize: '9.5px', color: '#38bdf8' }}
+              onClick={onOpenNavigator}
+            >
+              Open Navigator
+            </button>
+          )}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', marginTop: '4px', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>
-          <div>X: <span style={{ color: '#f8fafc' }}>{stageX.toFixed(1)}</span> µm</div>
-          <div>Y: <span style={{ color: '#f8fafc' }}>{stageY.toFixed(1)}</span> µm</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', marginTop: '6px', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>
+          <div>X: <span style={{ color: '#f8fafc' }}>{stageX.toFixed(2)}</span> mm</div>
+          <div>Y: <span style={{ color: '#f8fafc' }}>{stageY.toFixed(2)}</span> mm</div>
           <div>Z: <span style={{ color: '#f8fafc' }}>452.0</span> µm</div>
         </div>
       </div>
